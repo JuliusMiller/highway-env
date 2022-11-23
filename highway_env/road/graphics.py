@@ -3,10 +3,13 @@ from typing import List, Tuple, Union, TYPE_CHECKING
 import numpy as np
 import pygame
 
+from highway_env.pedestrian.graphics import HumanGraphics
+from highway_env.pedestrian.kinematics import Human
 from highway_env.road.lane import LineType, AbstractLane
 from highway_env.road.road import Road
 from highway_env.utils import Vector
 from highway_env.vehicle.graphics import VehicleGraphics
+from highway_env.vehicle.kinematics import Vehicle
 from highway_env.vehicle.objects import Obstacle, Landmark
 
 if TYPE_CHECKING:
@@ -251,11 +254,19 @@ class RoadGraphics(object):
         :param simulation_frequency: simulation frequency
         :param offscreen: render without displaying on a screen
         """
+        # added check for human
         if road.record_history:
             for v in road.vehicles:
-                VehicleGraphics.display_history(v, surface, simulation=simulation_frequency, offscreen=offscreen)
+                if isinstance(v, Human):
+                    HumanGraphics.display_history(v, surface, simulation=simulation_frequency, offscreen=offscreen)
+                else:
+                    VehicleGraphics.display_history(v, surface, simulation=simulation_frequency, offscreen=offscreen)
+
         for v in road.vehicles:
-            VehicleGraphics.display(v, surface, offscreen=offscreen)
+            if isinstance(v, Human):
+                HumanGraphics.display(v, surface, offscreen=offscreen)
+            else:
+                VehicleGraphics.display(v, surface, offscreen=offscreen)
 
     @staticmethod
     def display_road_objects(road: Road, surface: WorldSurface, offscreen: bool = False) -> None:
