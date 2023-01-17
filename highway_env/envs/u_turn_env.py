@@ -1,7 +1,6 @@
 from typing import Dict, Text
 
 import numpy as np
-from gym.envs.registration import register
 
 
 from highway_env import utils
@@ -68,10 +67,10 @@ class UTurnEnv(AbstractEnv):
         }
 
     def _is_terminated(self) -> bool:
-        return self.vehicle.crashed
+        return self.vehicle.crashed or self.time >= self.config["duration"]
 
     def _is_truncated(self) -> bool:
-        return self.time >= self.config["duration"]
+        return False
 
     def _reset(self) -> np.ndarray:
         self._make_road()
@@ -206,7 +205,4 @@ class UTurnEnv(AbstractEnv):
         self.road.vehicles.append(vehicle)
 
 
-register(
-    id='u-turn-v0',
-    entry_point='highway_env.envs:UTurnEnv'
-)
+

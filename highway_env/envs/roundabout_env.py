@@ -1,6 +1,5 @@
 from typing import Tuple, Dict, Text
 
-from gym.envs.registration import register
 import numpy as np
 
 from highway_env import utils
@@ -56,10 +55,10 @@ class RoundaboutEnv(AbstractEnv):
         }
 
     def _is_terminated(self) -> bool:
-        return self.vehicle.crashed
+        return self.vehicle.crashed or self.time >= self.config["duration"]
 
     def _is_truncated(self) -> bool:
-        return self.time >= self.config["duration"]
+        return False
 
     def _reset(self) -> None:
         self._make_road()
@@ -188,9 +187,3 @@ class RoundaboutEnv(AbstractEnv):
         vehicle.plan_route_to(self.np_random.choice(destinations))
         vehicle.randomize_behavior()
         self.road.vehicles.append(vehicle)
-
-
-register(
-    id='roundabout-v0',
-    entry_point='highway_env.envs:RoundaboutEnv',
-)

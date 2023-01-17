@@ -1,6 +1,5 @@
 from typing import Dict, Tuple, Text
 
-from gym.envs.registration import register
 import numpy as np
 
 from highway_env import utils
@@ -103,11 +102,12 @@ class IntersectionEnv(AbstractEnv):
 
     def _agent_is_terminal(self, vehicle: Vehicle) -> bool:
         """The episode is over when a collision occurs or when the access ramp has been passed."""
-        return vehicle.crashed \
-            or self.has_arrived(vehicle)
+        return (vehicle.crashed or
+                self.has_arrived(vehicle) or
+                self.time >= self.config["duration"])
 
     def _is_truncated(self) -> bool:
-        return self.time >= self.config["duration"]
+        return
 
     def _info(self, obs: np.ndarray, action: int) -> dict:
         info = super()._info(obs, action)
@@ -308,24 +308,3 @@ class ContinuousIntersectionEnv(IntersectionEnv):
         return config
 
 TupleMultiAgentIntersectionEnv = MultiAgentWrapper(MultiAgentIntersectionEnv)
-
-
-register(
-    id='intersection-v0',
-    entry_point='highway_env.envs:IntersectionEnv',
-)
-
-register(
-    id='intersection-v1',
-    entry_point='highway_env.envs:ContinuousIntersectionEnv',
-)
-
-register(
-    id='intersection-multi-agent-v0',
-    entry_point='highway_env.envs:MultiAgentIntersectionEnv',
-)
-
-register(
-    id='intersection-multi-agent-v1',
-    entry_point='highway_env.envs:TupleMultiAgentIntersectionEnv',
-)

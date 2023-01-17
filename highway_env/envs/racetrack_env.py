@@ -1,7 +1,6 @@
 from itertools import repeat, product
 from typing import Tuple, Dict, Text
 
-from gym.envs.registration import register
 import numpy as np
 
 from highway_env import utils
@@ -73,10 +72,10 @@ class RacetrackEnv(AbstractEnv):
         }
 
     def _is_terminated(self) -> bool:
-        return self.vehicle.crashed
+        return self.vehicle.crashed or self.time >= self.config["duration"]
 
     def _is_truncated(self) -> bool:
-        return self.time >= self.config["duration"]
+        return False
 
     def _reset(self) -> None:
         self._make_road()
@@ -224,9 +223,3 @@ class RacetrackEnv(AbstractEnv):
                     break
             else:
                 self.road.vehicles.append(vehicle)
-
-
-register(
-    id='racetrack-v0',
-    entry_point='highway_env.envs:RacetrackEnv',
-)
