@@ -3,6 +3,7 @@ from typing import List, Tuple
 import numpy as np
 
 from highway_env import utils
+from highway_env.pedestrian.kinematics import Human
 from highway_env.road.road import Road, RoadNetwork
 from highway_env.vehicle.controller import ControlledVehicle, MDPVehicle
 from highway_env.vehicle.kinematics import Vehicle, Obstacle
@@ -29,6 +30,8 @@ class RegulatedRoad(Road):
 
         # Unfreeze previous yielding vehicles
         for v in self.vehicles:
+            if isinstance(v, Human):
+                continue
             if getattr(v, "is_yielding", False):
                 if v.yield_timer >= self.YIELD_DURATION * self.REGULATION_FREQUENCY:
                     v.target_speed = v.lane.speed_limit
@@ -40,6 +43,8 @@ class RegulatedRoad(Road):
         # Find new conflicts and resolve them
         for i in range(len(self.vehicles) - 1):
             for j in range(i+1, len(self.vehicles)):
+                if isinstance(self.vehicles[i], Human) or isinstance(self.vehicles[j], Human):
+                    continue
                 if self.is_conflict_possible(self.vehicles[i], self.vehicles[j]):
                     yielding_vehicle = self.respect_priorities(self.vehicles[i], self.vehicles[j])
                     if yielding_vehicle is not None and \
