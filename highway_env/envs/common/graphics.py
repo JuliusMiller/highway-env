@@ -182,9 +182,9 @@ class EventHandler(object):
             if event.key == pygame.K_LEFT and action_type.longitudinal:
                 action_type.act(action_type.actions_indexes["SLOWER"])
             if event.key == pygame.K_DOWN and action_type.lateral:
-                action_type.act(action_type.actions_indexes["LANE_RIGHT"])
+                action_type.act(action_type.actions_indexes["RIGHT_TURN"])  # changed for pedestrian - LANE_RIGHT
             if event.key == pygame.K_UP:
-                action_type.act(action_type.actions_indexes["LANE_LEFT"])
+                action_type.act(action_type.actions_indexes["LEFT_TURN"])  # changed for pedestrian - LANE_LEFT
 
     @classmethod
     def handle_continuous_action_event(cls, action_type: ContinuousAction, event: pygame.event.EventType) -> None:

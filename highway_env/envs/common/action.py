@@ -124,7 +124,7 @@ class ContinuousAction(ActionType):
 
     @property
     def vehicle_class(self) -> Callable:
-        return Vehicle if not self.dynamical else BicycleVehicle
+        return IDMVehicle if not self.dynamical else BicycleVehicle  # changed Vehicle to IDMVehicle
 
     def act(self, action: np.ndarray) -> None:
         if self.clip:
@@ -187,6 +187,7 @@ class DiscreteMetaAction(ActionType):
         3: 'FASTER',
         4: 'SLOWER'
     }
+
     """A mapping of action indexes to labels."""
 
     ACTIONS_LONGI = {
@@ -208,6 +209,7 @@ class DiscreteMetaAction(ActionType):
                  longitudinal: bool = True,
                  lateral: bool = True,
                  target_speeds: Optional[Vector] = None,
+                 pedestrian: bool = False,
                  **kwargs) -> None:
         """
         Create a discrete action space of meta-actions.
@@ -220,6 +222,7 @@ class DiscreteMetaAction(ActionType):
         super().__init__(env)
         self.longitudinal = longitudinal
         self.lateral = lateral
+        self.pedestrian = pedestrian
         self.target_speeds = np.array(target_speeds) if target_speeds is not None else MDPVehicle.DEFAULT_TARGET_SPEEDS
         self.actions = self.ACTIONS_ALL if longitudinal and lateral \
             else self.ACTIONS_LONGI if longitudinal \
@@ -227,6 +230,12 @@ class DiscreteMetaAction(ActionType):
             else None
         if self.actions is None:
             raise ValueError("At least longitudinal or lateral actions must be included")
+        if self.pedestrian:
+            for k, v in self.actions.items():
+                if v == 'LANE_LEFT':
+                    self.actions[k] = 'LEFT_TURN'
+                if v == 'LANE_RIGHT':
+                    self.actions[k] = 'RIGHT_TURN'
         self.actions_indexes = {v: k for k, v in self.actions.items()}
 
     def space(self) -> spaces.Space:
@@ -248,6 +257,8 @@ class DiscreteMetaAction(ActionType):
 
         :return: the list of available actions
         """
+        if self.pedestrian:
+            return self.actions.keys() # Human can do every thing all the time
         actions = [self.actions_indexes['IDLE']]
         network = self.controlled_vehicle.road.network
         for l_index in network.side_lanes(self.controlled_vehicle.lane_index):
