@@ -1,19 +1,22 @@
-from typing import Dict, Text
+import random
+from typing import Dict, Text, Optional
 
 import numpy as np
 from gym.envs.registration import register
 
 from highway_env import utils
 from highway_env.envs import AbstractEnv
-from highway_env.envs.common.action import Action
-from highway_env.pedestrian.controller import MDPHuman, ControlledHuman
-from highway_env.road.lane import LineType, StraightLane, SineLane, CircularLane
+from highway_env.envs.common.abstract import Observation
+from highway_env.envs.common.action import Action, ContinuousAction, DiscreteMetaAction
+from highway_env.pedestrian.controller import ControlledHuman, FollowHuman, FollowAthlete, ControlledAthlete
+from highway_env.road.lane import LineType, StraightLane, SineLane, CircularLane, AbstractLane
+from highway_env.road.regulation import RegulatedRoad
 from highway_env.road.road import Road, RoadNetwork
 from highway_env.utils import near_split
 from highway_env.vehicle.controller import ControlledVehicle, MDPVehicle
 from highway_env.vehicle.kinematics import Vehicle
-from highway_env.pedestrian.kinematics import Human
-from highway_env.vehicle.objects import Obstacle
+from highway_env.pedestrian.kinematics import Human, Athlete
+from highway_env.vehicle.objects import Obstacle, Landmark
 
 
 class PedestrianEnv(AbstractEnv):
@@ -21,88 +24,98 @@ class PedestrianEnv(AbstractEnv):
     def default_config(cls) -> dict:
         config = super().default_config()
         config.update({
-            "observation": {
-                "type": "Kinematics"
-            },
             "action": {
                 "type": "DiscreteMetaAction",
+                "pedestrian": "True"
             },
-            "vehicles_count": 1,
-            "controlled_vehicles": 1,
-            "initial_lane_id": None,
-            "duration": 40,  # [s]
-            "ego_spacing": 2,
+            "vehicles_count": 5,
+            "controlled_humans": 1,
+            "lanes_count": 2,
+            "duration": 60,  # [s]
             "vehicles_density": 1,
-            "collision_reward": -1,  # The reward received when colliding with a vehicle.
-            "right_lane_reward": 0.1,  # The reward received when driving on the right-most lanes, linearly mapped to
-            # zero for other lanes.
-            "high_speed_reward": 0.4,  # The reward received when driving at full speed, linearly mapped to zero for
-            # lower speeds according to config["reward_speed_range"].
-            "lane_change_reward": 0,  # The reward received at each lane change action.
-            "reward_speed_range": [20, 30],
-            "normalize_reward": True,
-            "offroad_terminal": False
+            "offroad_terminal": False,
+            "layout": 'Straight',
+            "pedestrian_speed": 1,  # [m/s]
+            "pedestrian_coordinates": (20, -10),
+            "pedestrian_heading": 0,
+            "athlete": False
         })
         return config
 
     def _reset(self) -> None:
         self._create_road()
         self._create_vehicles()
+        self._create_human()
 
     def _create_road(self) -> None:
-        #self.road = self.create_oval()
-        self.road = self.create_straight()
+        layout = self.config['layout']
+        if layout == 'Straight':
+            self.road = self.create_straight()
+        elif layout == 'Oval':
+            self.road = self.create_oval()
+        elif layout == 'Intersection':
+            self.road = self.create_intersection()
+        elif layout == 'Oncoming':
+            self.road = self.create_oncoming()
+        else:
+            raise NotImplementedError(f"{layout} not implemented")
 
     def _create_vehicles(self) -> None:
         """Create some new random vehicles of a given type, and add them on the road."""
         other_vehicles_type = utils.class_from_path(self.config["other_vehicles_type"])
-
-        self.controlled_vehicles = []
-
-        vehicle = Vehicle(self.road, self.lane.position(0.0, 0), self.lane.heading_at(0.0), speed=3)  # Vehicle at Position 0
-        vehicle = self.action_type.vehicle_class(self.road, vehicle.position, vehicle.heading, vehicle.speed)
-        self.road.vehicles.append(vehicle)
-
-        for _ in range(self.config["vehicles_count"] - 1):
-            vehicle = other_vehicles_type.create_random(self.road, speed=0, spacing=1 / self.config["vehicles_density"])
-            vehicle.randomize_behavior()
+        speeds = [6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11]
+        if self.config['vehicles_count'] > 0:
+            vehicle = Vehicle(self.road, self.lane.position(0.0, 0), self.lane.heading_at(0.0), speed=random.sample(speeds, 1)[0])   # Vehicle at Position 0
+            vehicle = self.action_type.vehicle_class(self.road, vehicle.position, vehicle.heading, vehicle.speed)
+            print(vehicle)
             self.road.vehicles.append(vehicle)
 
-        #human = Human(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
-        human = MDPHuman(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
-        #human = ControlledHuman(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=1)
+        for i in range(self.config["vehicles_count"] - 1):
+            if self.config['layout'] == 'Oncoming':
+                if i % 2 == 0:
+                    vehicle = other_vehicles_type(self.road, position=self.road.network.get_lane(("b", "a", 0)).position(10 + i * 10, 0),
+                              heading=self.road.network.get_lane(("b", "a", 0)).heading_at(10 + 10*i),
+                              speed=random.sample(speeds, 1)[0])
+                else:
+                    vehicle = other_vehicles_type(self.road, position=self.road.network.get_lane(("a", "b", 0)).position(10 + i * 10, 0),
+                              heading=self.road.network.get_lane(("a", "b", 0)).heading_at(10 + 10*i),
+                              speed=random.sample(speeds, 1)[0])
+            else:
+                vehicle = other_vehicles_type.create_random(self.road, speed=random.sample(speeds, 1)[0], spacing=1 / self.config["vehicles_density"]) # random.sample(speeds, 1)[0]
+            vehicle.randomize_behavior()
+            #print(f"r: {vehicle}")
+            self.road.vehicles.append(vehicle)
+
+    def _create_human(self) -> None:
+        self.controlled_vehicles = []
+        # human = Human(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
+        # human = MDPHuman(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
+        x, y = self.config['pedestrian_coordinates']
+        speed = self.config['pedestrian_speed']
+        heading = self.config['pedestrian_heading']
+        athlete = self.config['athlete']
+        if isinstance(self.action_type, ContinuousAction):
+            human = Human(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+        elif isinstance(self.action_type, DiscreteMetaAction):
+            human = ControlledHuman(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+        elif isinstance(self.action_type, ContinuousAction) and athlete:
+            human = Athlete(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+        elif isinstance(self.action_type, DiscreteMetaAction) and athlete:
+            human = ControlledAthlete(self.road, self.lane.position(x, y), heading=heading, speed=speed)
 
         self.controlled_vehicles.append(human)
         self.road.vehicles.append(human)
 
     def _reward(self, action: Action) -> float:
         """
-        The reward is defined to foster driving at high speed, on the rightmost lanes, and to avoid collisions.
         :param action: the last action performed
         :return: the corresponding reward
         """
-        rewards = self._rewards(action)
-        reward = sum(self.config.get(name, 0) * reward for name, reward in rewards.items())
-        if self.config["normalize_reward"]:
-            reward = utils.lmap(reward,
-                                [self.config["collision_reward"],
-                                 self.config["high_speed_reward"] + self.config["right_lane_reward"]],
-                                [0, 1])
-        reward *= rewards['on_road_reward']
-        return reward
+        return 0.0
 
     def _rewards(self, action: Action) -> Dict[Text, float]:
-        neighbours = self.road.network.all_side_lanes(self.vehicle.lane_index)
-        lane = self.vehicle.target_lane_index[2] if isinstance(self.vehicle, ControlledVehicle) \
-            else self.vehicle.lane_index[2]
-        # Use forward speed rather than speed, see https://github.com/eleurent/highway-env/issues/268
-        forward_speed = self.vehicle.speed * np.cos(self.vehicle.heading)
-        scaled_speed = utils.lmap(forward_speed, self.config["reward_speed_range"], [0, 1])
         return {
-            "collision_reward": float(self.vehicle.crashed),
-            "right_lane_reward": lane / max(len(neighbours) - 1, 1),
-            "high_speed_reward": np.clip(scaled_speed, 0, 1),
-            "on_road_reward": float(self.vehicle.on_road)
+            "collision_reward": 0.0
         }
 
     def _is_terminated(self) -> bool:
@@ -116,13 +129,17 @@ class PedestrianEnv(AbstractEnv):
 
     def create_straight(self):
         net = RoadNetwork()
-        lane = StraightLane([0, 0], [300, 0], line_types=(LineType.CONTINUOUS, LineType.STRIPED), width=5,
-                            speed_limit=100)
+        width = 5
+        lane = StraightLane([0, 0], [700, 0], line_types=(LineType.CONTINUOUS, LineType.STRIPED if self.config["lanes_count"] > 1 else LineType.CONTINUOUS), width=width,
+                            speed_limit=20)
         self.lane = lane
         net.add_lane("a", "b", lane)
-        net.add_lane("a", "b",
-                     StraightLane([0, 5], [300, 5], line_types=(LineType.STRIPED, LineType.CONTINUOUS), width=5,
-                                  speed_limit=100))
+        i = 1
+        while i < self.config["lanes_count"]:
+            net.add_lane("a", "b",
+                         StraightLane([0, i * width], [700, i * width], line_types=(LineType.STRIPED, LineType.STRIPED if i + 1 < self.config["lanes_count"] else LineType.CONTINUOUS), width=width,
+                                      speed_limit=20))
+            i += 1
 
         return Road(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
 
@@ -131,7 +148,7 @@ class PedestrianEnv(AbstractEnv):
 
         # Oval
         # Set Speed Limits for Road Sections - Straight, Turn 1, Straight, Turn 2
-        speedlimits = [10, 10, 10, 10]
+        speedlimits = [20, 10, 30, 10]
 
         # Initialise First Lane
         lane = StraightLane([42, 0], [100, 0], line_types=(LineType.CONTINUOUS, LineType.STRIPED), width=5,
@@ -177,8 +194,152 @@ class PedestrianEnv(AbstractEnv):
 
         return Road(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
 
+    def create_intersection(self) -> Road:
+        """
+        Make an 4-way intersection.
 
-    register(
-        id='pedestrian-env-v0',
-        entry_point='highway_env.envs:PedestrianEnv',
-    )
+        The horizontal road has the right of way. More precisely, the levels of priority are:
+            - 3 for horizontal straight lanes and right-turns
+            - 1 for vertical straight lanes and right-turns
+            - 2 for horizontal left-turns
+            - 0 for vertical left-turns
+
+        The code for nodes in the road network is:
+        (o:outer | i:inner + [r:right, l:left]) + (0:south | 1:west | 2:north | 3:east)
+
+        :return: the intersection road
+        """
+        lane_width = AbstractLane.DEFAULT_WIDTH
+        right_turn_radius = lane_width + 5  # [m}
+        left_turn_radius = right_turn_radius + lane_width  # [m}
+        outer_distance = right_turn_radius + lane_width / 2
+        access_length = 50 + 50  # [m]
+
+        net = RoadNetwork()
+        n, c, s = LineType.NONE, LineType.CONTINUOUS, LineType.STRIPED
+        for corner in range(4):
+            angle = np.radians(90 * corner)
+            is_horizontal = corner % 2
+            priority = 3 if is_horizontal else 1
+            rotation = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+            # Incoming
+            start = rotation @ np.array([lane_width / 2, access_length + outer_distance])
+            end = rotation @ np.array([lane_width / 2, outer_distance])
+            net.add_lane("o" + str(corner), "ir" + str(corner),
+                         StraightLane(start, end, line_types=[s, c], priority=priority, speed_limit=10))
+            # Right turn
+            r_center = rotation @ (np.array([outer_distance, outer_distance]))
+            net.add_lane("ir" + str(corner), "il" + str((corner - 1) % 4),
+                         CircularLane(r_center, right_turn_radius, angle + np.radians(180), angle + np.radians(270),
+                                      line_types=[n, c], priority=priority, speed_limit=10))
+            # Left turn
+            l_center = rotation @ (np.array([-left_turn_radius + lane_width / 2, left_turn_radius - lane_width / 2]))
+            net.add_lane("ir" + str(corner), "il" + str((corner + 1) % 4),
+                         CircularLane(l_center, left_turn_radius, angle + np.radians(0), angle + np.radians(-90),
+                                      clockwise=False, line_types=[n, n], priority=priority - 1, speed_limit=10))
+            # Straight
+            start = rotation @ np.array([lane_width / 2, outer_distance])
+            end = rotation @ np.array([lane_width / 2, -outer_distance])
+            self.lane = StraightLane(start, end, line_types=[s, n], priority=priority, speed_limit=10)
+            net.add_lane("ir" + str(corner), "il" + str((corner + 2) % 4), self.lane)
+            # Exit
+            start = rotation @ np.flip([lane_width / 2, access_length + outer_distance], axis=0)
+            end = rotation @ np.flip([lane_width / 2, outer_distance], axis=0)
+            net.add_lane("il" + str((corner - 1) % 4), "o" + str((corner - 1) % 4),
+                         StraightLane(end, start, line_types=[n, c], priority=priority, speed_limit=10))
+
+        return  RegulatedRoad(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
+
+    def create_oncoming(self, length=300):
+        """
+        Make a road composed of a two-way road.
+
+        :return: the road
+        """
+        net = RoadNetwork()
+        self.lane = StraightLane([0, 0], [length, 0], line_types=(LineType.CONTINUOUS_LINE, LineType.STRIPED))
+        # Lanes
+        net.add_lane("a", "b", self.lane)
+        '''net.add_lane("a", "b", StraightLane([0, StraightLane.DEFAULT_WIDTH], [length, StraightLane.DEFAULT_WIDTH],
+                                            line_types=(LineType.NONE, LineType.CONTINUOUS_LINE)))'''
+        net.add_lane("b", "a", StraightLane([length, StraightLane.DEFAULT_WIDTH], [0, StraightLane.DEFAULT_WIDTH],
+                                            line_types=(LineType.CONTINUOUS_LINE, LineType.NONE)))
+        print(net.lanes_list())
+
+        return Road(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
+
+    def _info(self, obs: Observation, action: Optional[Action] = None) -> dict:
+        """
+        Return a dictionary of additional information
+
+        :param obs: current observation
+        :param action: current action
+        :return: info dict
+        """
+        info = {
+            "speed": self.vehicle.speed,
+            "crashed": self.vehicle.crashed,
+            "action": action,
+            "heading": self.vehicle.heading,
+        }
+        return info
+
+
+class PedestrianFixedLandmark(PedestrianEnv):
+    def _create_road(self) -> None:
+        super()._create_road()
+        self.goal = Landmark(self.road, self.lane.position(20, 10), heading=self.lane.heading)
+        self.road.objects.append(self.goal)
+        self.road.objects.append(
+            Landmark(self.road, self.lane.position(20, -5), heading=self.lane.heading))
+        self.road.objects.append(
+            Landmark(self.road, self.lane.position(22, -5), heading=self.lane.heading))
+        self.road.objects.append(
+            Landmark(self.road, self.lane.position(22, 10), heading=self.lane.heading))
+        '''self.road.objects.append(
+            Landmark(self.road, self.lane.position(self.lane.length / 3, 20), heading=self.lane.heading))
+        self.road.objects.append(
+            Landmark(self.road, self.lane.position(self.lane.length / 2, -5), heading=self.lane.heading))
+        self.road.objects.append(
+            Landmark(self.road, self.lane.position(self.lane.length / 2, 5), heading=self.lane.heading))'''
+
+    def _create_human(self) -> None:
+        self.controlled_vehicles = []
+        x, y = self.config['pedestrian_coordinates']
+        speed = self.config['pedestrian_speed']
+        heading = self.config['pedestrian_heading']
+        athlete = self.config['athlete']
+        if athlete:
+            human = FollowAthlete(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+        else:
+            human = FollowHuman(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+
+        self.controlled_vehicles.append(human)
+        self.road.vehicles.append(human)
+
+
+class PedestrianMovingLandmark(PedestrianEnv):
+    def _create_road(self) -> None:
+        super()._create_road()
+        self.moving_goal = Landmark(self.road, self.lane.position(0, 20), heading=self.lane.heading)
+        self.road.objects.append(self.moving_goal)
+
+    def _create_human(self) -> None:
+        self.controlled_vehicles = []
+        x, y = self.config['pedestrian_coordinates']
+        speed = self.config['pedestrian_speed']
+        heading = self.config['pedestrian_heading']
+        athlete = self.config['athlete']
+        if athlete:
+            human = FollowAthlete(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+        else:
+            human = FollowHuman(self.road, self.lane.position(x, y), heading=heading, speed=speed)
+
+        self.controlled_vehicles.append(human)
+        self.road.vehicles.append(human)
+
+    def move_landmark(self, pos):
+        self.road.objects.remove(self.moving_goal)
+        x, y = pos
+        self.moving_goal = Landmark(self.road, self.lane.position(x, y), heading=self.lane.heading)
+        self.road.objects.append(self.moving_goal)
