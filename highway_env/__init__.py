@@ -101,3 +101,19 @@ def register_highway_envs():
         entry_point='highway_env.envs:UTurnEnv'
     )
 
+    # Pedestrian_env.py
+    register(
+        id='pedestrian-env-v0',
+        entry_point='highway_env.envs:PedestrianEnv',
+    )
+
+    register(
+        id='pedestrian-moving-landmark-env-v0',
+        entry_point='highway_env.envs:PedestrianMovingLandmark',
+    )
+
+    register(
+        id='pedestrian-fixed-landmark-env-v0',
+        entry_point='highway_env.envs:PedestrianFixedLandmark',
+    )
+
