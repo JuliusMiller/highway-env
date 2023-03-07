@@ -1,3 +1,4 @@
+import random
 from typing import Union, Optional, Tuple, List
 import numpy as np
 import copy
@@ -8,36 +9,30 @@ from highway_env.road.road import Road, LaneIndex
 from highway_env.vehicle.objects import RoadObject, Obstacle, Landmark
 from highway_env.utils import Vector
 
-
-
 #TODO: Unterschied zwischen Gehen und Rennen
 
-class Human(RoadObject):
-    RADIUS = 1
-    '''Radius of Human [m]'''
-    DEFAULT_INITIAL_SPEEDS = [1, 2]
-    """ Range for random initial speeds [m/s] """
-    MAX_SPEED = 20.
-    """ Maximum reachable speed [m/s] """
-    MIN_SPEED = -2.
-    """ Minimum reachable speed [m/s] """
 
-    HISTORY_SIZE = 30
-    """ Length of the vehicle state history, for trajectory display"""
+class Human(RoadObject):
+    RADIUS = 0.5
+    '''Radius of Human [m]'''
+    LENGTH = 2 * RADIUS
+    WIDTH = 2 * RADIUS
+    MAX_SPEED = 3.
+    """ Maximum reachable speed [m/s] """
+    MIN_SPEED = -3.
+    """ Minimum reachable speed [m/s] """
+    DEFAULT_INITIAL_SPEEDS = [1, 1.5]
+    """ Range for random initial speeds [m/s] """
 
     def __init__(self,
                  road: Road,
                  position: Vector,
                  heading: float = 0,
-                 speed: float = 0,
-                 predition_type: str = 'constant_steering'):
+                 speed: float = random.uniform(DEFAULT_INITIAL_SPEEDS[0], DEFAULT_INITIAL_SPEEDS[1])):
         super().__init__(road, position, heading, speed)
-        self.prediction_type = predition_type
-        self.action = {'steering': 0, 'acceleration': 0}
+        self.action = {'steering': 0.0, 'acceleration': 0.0}
         self.crashed = False
         self.impact = None
-        self.log = []
-        self.history = deque(maxlen=self.HISTORY_SIZE)
         self.color = (50, 150, 0)
 
     @classmethod
@@ -92,22 +87,21 @@ class Human(RoadObject):
         :param dt: timestep of integration of the model [s]
         """
         self.clip_actions()
-        delta_f = self.action['steering']
-        beta = np.arctan(1 / 2 * np.tan(delta_f))
-        v = self.speed * np.array([np.cos(self.heading + beta),
-                                   np.sin(self.heading + beta)])
+        v = self.speed * np.array([np.cos(self.heading),
+                                   np.sin(self.heading)])
         self.position += v * dt
         if self.impact is not None:
             self.position += self.impact
             self.crashed = True
             self.impact = None
-        self.heading += self.speed * np.sin(beta) / (self.LENGTH / 2) * dt
-        self.speed += self.action['acceleration'] * dt
-        self.on_state_update()
+        steering = self.action['steering']
+        acceleration = self.action['acceleration']
+        self.heading += steering * dt
+        self.speed += acceleration * dt
 
     def clip_actions(self) -> None:
         if self.crashed:
-            self.action['steering'] = 0
+            self.action['steering'] = 0.0
             self.action['acceleration'] = -1.0*self.speed
         self.action['steering'] = float(self.action['steering'])
         self.action['acceleration'] = float(self.action['acceleration'])
@@ -116,7 +110,9 @@ class Human(RoadObject):
         elif self.speed < self.MIN_SPEED:
             self.action['acceleration'] = max(self.action['acceleration'], 1.0 * (self.MIN_SPEED - self.speed))
 
-    def on_state_update(self) -> None:
-        if self.road:
-            self.lane_index = self.road.network.get_closest_lane_index(self.position, self.heading)
-            self.lane = self.road.network.get_lane(self.lane_index)
+
+class Athlete(Human):
+    MAX_SPEED = 10.
+    """ Maximum reachable speed [m/s] """
+    MIN_SPEED = -7
+    """ Minimum reachable speed [m/s] """

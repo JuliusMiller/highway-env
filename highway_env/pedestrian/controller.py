@@ -5,60 +5,52 @@ import copy
 from highway_env import utils
 from highway_env.road.road import Road, LaneIndex, Route
 from highway_env.utils import Vector
-from highway_env.pedestrian.kinematics import Human
+from highway_env.pedestrian.kinematics import Human, Athlete
+from highway_env.vehicle.objects import Landmark
 
 
 class ControlledHuman(Human):
     """
-    A Human piloted by two low-level controller, allowing high-level actions such as cruise control and lane changes.
+    A Human piloted by two low-level controller.
 
-    - The longitudinal controller is a speed controller;
-    - The lateral controller is a heading controller cascaded with a lateral position controller.
+    - The longitudinal controller is a speed controller
+    - The lateral controller is a heading controller
     """
 
-    target_speed: float
-    """ Desired velocity."""
-
     """Characteristic time"""
-    TAU_ACC = 0.6  # [s]
-    TAU_HEADING = 0.2  # [s]
-    TAU_LATERAL = 0.6  # [s]
 
-    TAU_PURSUIT = 0.5 * TAU_HEADING  # [s]
-    KP_A = 1 / TAU_ACC
-    KP_HEADING = 1 / TAU_HEADING
-    KP_LATERAL = 1 / TAU_LATERAL  # [1/s]
-    MAX_STEERING_ANGLE = np.pi / 3  # [rad]
-    DELTA_SPEED = 1  # [m/s]
+    KP_ACC = 1.5
+    KP_ANGLE = 1.5
+    MAX_STEERING_ANGLE = np.pi / 2  # [rad]
+    ACC_MAX = 1.0  # [m/s2]
+    """Maximum acceleration."""
+    DELTA_SPEED = 1 / 3.6  # [m/s]
+    DELTA_ANGLE = np.pi / 8
 
     def __init__(self,
                  road: Road,
                  position: Vector,
                  heading: float = 0,
                  speed: float = 0,
-                 target_lane_index: LaneIndex = None,
-                 target_speed: float = None,
-                 route: Route = None):
+                 target_speed: float = None
+                 ):
         super().__init__(road, position, heading, speed)
-        self.target_lane_index = target_lane_index or self.lane_index
         self.target_speed = target_speed or self.speed
-        self.route = route
-        self.angle = heading
+        self.target_angle = heading
 
     @classmethod
-    def create_from(cls, vehicle: "ControlledVehicle") -> "ControlledVehicle":
+    def create_from(cls, human: "ControlledHuman") -> "ControlledHuman":
         """
-        Create a new vehicle from an existing one.
+        Create a new human from an existing one.
 
-        The vehicle dynamics and target dynamics are copied, other properties are default.
+        The human dynamics and target dynamics are copied, other properties are default.
 
-        :param vehicle: a vehicle
-        :return: a new vehicle at the same dynamical state
+        :param human: a Human
+        :return: a new human at the same dynamical state
         """
-        v = cls(vehicle.road, vehicle.position, heading=vehicle.heading, speed=vehicle.speed,
-                target_lane_index=vehicle.target_lane_index, target_speed=vehicle.target_speed,
-                route=vehicle.route)
-        return v
+        h = cls(human.road, human.position, heading=human.heading, speed=human.speed,
+                target_speed=human.target_speed)
+        return h
 
     def act(self, action: Union[dict, str] = None) -> None:
         """
@@ -69,56 +61,33 @@ class ControlledHuman(Human):
 
         :param action: a high-level action
         """
-        self.follow_road()
         if action == "FASTER":
             self.target_speed += self.DELTA_SPEED
         elif action == "SLOWER":
             self.target_speed -= self.DELTA_SPEED
-        elif action == "LANE_RIGHT":
-            self.angle += 20
-        elif action == "LANE_LEFT":
-            self.angle -= 20
+        elif action == "RIGHT_TURN":
+            self.target_angle += self.DELTA_ANGLE
+        elif action == "LEFT_TURN":
+            self.target_angle -= self.DELTA_ANGLE
 
-        action = {"steering": self.steering_control(self.angle),
+        if np.abs(self.target_angle) < 1e-4:
+            self.target_angle = 0.0
+        if np.abs(self.target_speed) < 1e-4:
+            self.target_speed = 0.0
+        action = {"steering": self.steering_control(self.target_angle),
                   "acceleration": self.speed_control(self.target_speed)}
-        action['steering'] = np.clip(action['steering'], -self.MAX_STEERING_ANGLE, self.MAX_STEERING_ANGLE)
         super().act(action)
 
-    def follow_road(self) -> None:
-        """At the end of a lane, automatically switch to a next one."""
-        if self.road.network.get_lane(self.target_lane_index).after_end(self.position):
-            self.target_lane_index = self.road.network.next_lane(self.target_lane_index,
-                                                                 route=self.route,
-                                                                 position=self.position,
-                                                                 np_random=self.road.np_random)
+    def safe_angle(self, angle):
+        return np.arctan2(np.sin(angle), np.cos(angle))
 
     def steering_control(self, steering_angle: float) -> float:
         """
-        Steer the vehicle to follow the center of an given lane.
-
-        1. Lateral position is controlled by a proportional controller yielding a lateral speed command
-        2. Lateral speed command is converted to a heading reference
-        3. Heading is controlled by a proportional controller yielding a heading rate command
-        4. Heading rate command is converted to a steering angle
-
         :param steering_angle: new angle
         :return: a steering wheel angle command [rad]
         """
-
-        lane_coords = self.road.network.get_lane(self.lane_index)
-        lane_coords = lane_coords.local_coordinates(self.position)
-
-
-        # Lateral position control
-        lateral_speed_command = - self.KP_LATERAL * lane_coords[1]
-        # Lateral speed to heading
-        heading_command = np.arcsin(np.clip(lateral_speed_command / utils.not_zero(self.speed), -1, 1))
-        heading_ref = self.angle
-        # Heading control
-        heading_rate_command = self.KP_HEADING * utils.wrap_to_pi(heading_ref - self.heading)
-        # Heading rate to steering angle
-        slip_angle = np.arcsin(np.clip(self.LENGTH / 2 / utils.not_zero(self.speed) * heading_rate_command, -1, 1))
-        steering_angle = np.arctan(2 * np.tan(slip_angle))
+        e = steering_angle - self.heading
+        steering_angle = self.KP_ANGLE * self.safe_angle(e)
         steering_angle = np.clip(steering_angle, -self.MAX_STEERING_ANGLE, self.MAX_STEERING_ANGLE)
         return float(steering_angle)
 
@@ -131,132 +100,85 @@ class ControlledHuman(Human):
         :param target_speed: the desired speed
         :return: an acceleration command [m/s2]
         """
-        return self.KP_A * (target_speed - self.speed)
-
-    def predict_trajectory_constant_speed(self, times: np.ndarray) -> Tuple[List[np.ndarray], List[float]]:
-        """
-        Predict the future positions of the vehicle along its planned route, under constant speed
-
-        :param times: timesteps of prediction
-        :return: positions, headings
-        """
-        coordinates = self.lane.local_coordinates(self.position)
-        route = self.route or [self.lane_index]
-        return tuple(zip(*[self.road.network.position_heading_along_route(route, coordinates[0] + self.speed * t, 0)
-                     for t in times]))
+        acceleration = self.KP_ACC * (target_speed - self.speed)
+        acceleration = np.clip(acceleration, -self.ACC_MAX, self.ACC_MAX)
+        return float(acceleration)
 
 
-# Markov Decision Process
-class MDPHuman(ControlledHuman):
-
-    """A controlled vehicle with a specified discrete range of allowed target speeds."""
-    DEFAULT_TARGET_SPEEDS = np.linspace(2, 10, 100)
-
+class FollowHuman(ControlledHuman):
+    """
+    A Human walks towards destination
+    """
     def __init__(self,
                  road: Road,
-                 position: List[float],
+                 position: Vector,
                  heading: float = 0,
                  speed: float = 0,
-                 target_lane_index: Optional[LaneIndex] = None,
-                 target_speed: Optional[float] = None,
-                 target_speeds: Optional[Vector] = None,
-                 route: Optional[Route] = None) -> None:
-        """
-        Initializes an MDPVehicle
+                 target_speed: float = None):
+        super().__init__(road, position, heading, speed, target_speed)
+        self.goals = self.road.objects  # [lm for lm in self.road.objects if isinstance(lm, Landmark)], better but wrong reference in moveLandmark
 
-        :param road: the road on which the vehicle is driving
-        :param position: its position
-        :param heading: its heading angle
-        :param speed: its speed
-        :param target_lane_index: the index of the lane it is following
-        :param target_speed: the speed it is tracking
-        :param target_speeds: the discrete list of speeds the vehicle is able to track, through faster/slower actions
-        :param route: the planned route of the vehicle, to handle intersections
+    @classmethod
+    def create_from(cls, human: "ControlledHuman") -> "FollowHuman":
         """
-        super().__init__(road, position, heading, speed, target_lane_index, target_speed, route)
-        self.target_speeds = np.array(target_speeds) if target_speeds is not None else self.DEFAULT_TARGET_SPEEDS
-        self.speed_index = self.speed_to_index(self.target_speed)
-        self.target_speed = self.index_to_speed(self.speed_index)
+        Create a new vehicle from an existing one.
+
+        The human dynamics and target dynamics are copied, other properties are default.
+
+        :param human: a human
+        :return: a new human at the same dynamical state
+        """
+        h = cls(human.road, human.position, heading=human.heading, speed=human.speed,
+                target_speed=human.target_speed)
+        return h
 
     def act(self, action: Union[dict, str] = None) -> None:
         """
-        Perform a high-level action.
+        Perform a high-level action to change the desired lane or speed.
 
-        - If the action is a speed change, choose speed from the allowed discrete range.
-        - Else, forward action to the ControlledVehicle handler.
+        - If a high-level action is provided, update the target speed and lane;
+        - then, perform longitudinal and lateral control.
 
         :param action: a high-level action
         """
-        if action == "FASTER":
-            self.speed_index = self.speed_to_index(self.speed) + 1
-        elif action == "SLOWER":
-            self.speed_index = self.speed_to_index(self.speed) - 1
-        else:
-            super().act(action)
-            return
-        self.speed_index = int(np.clip(self.speed_index, 0, self.target_speeds.size - 1))
-        self.target_speed = self.index_to_speed(self.speed_index)
-        super().act()
+        for g in self.goals:
+            if np.abs(g.position[0] - self.position[0]) < 1 and np.abs(g.position[1] - self.position[1]) < 1:
+                self.goals.remove(g)
+                self.goals.append(g)
+        goal_pos = self.goals[0].position if self.goals else [self.position[0], self.position[1]]
 
-    def index_to_speed(self, index: int) -> float:
-        """
-        Convert an index among allowed speeds to its corresponding speed
+        #Go to goal
+        self.target_angle = np.arctan2(goal_pos[1] - self.position[1], goal_pos[0] - self.position[0])
 
-        :param index: the speed index []
-        :return: the corresponding speed [m/s]
-        """
-        return self.target_speeds[index]
+        #Euklidische Distanz
+        self.target_speed = np.sqrt(np.power(goal_pos[0] - self.position[0], 2) + np.power(goal_pos[1] - self.position[1], 2)) / 4
 
-    def speed_to_index(self, speed: float) -> int:
-        """
-        Find the index of the closest speed allowed to a given speed.
+        super().act(self)
 
-        Assumes a uniform list of target speeds to avoid searching for the closest target speed
 
-        :param speed: an input speed [m/s]
-        :return: the index of the closest speed allowed []
-        """
-        x = (speed - self.target_speeds[0]) / (self.target_speeds[-1] - self.target_speeds[0])
-        return np.int64(np.clip(np.round(x * (self.target_speeds.size - 1)), 0, self.target_speeds.size - 1))
+class ControlledAthlete(Athlete, ControlledHuman):
 
-    @classmethod
-    def speed_to_index_default(cls, speed: float) -> int:
-        """
-        Find the index of the closest speed allowed to a given speed.
+    KP_ACC = 2
+    KP_ANGLE = 2
 
-        Assumes a uniform list of target speeds to avoid searching for the closest target speed
+    DELTA_SPEED = 1  # [m/s]
+    DELTA_ANGLE = np.pi / 6
+    ACC_MAX = 4.0  # [m/s2]
 
-        :param speed: an input speed [m/s]
-        :return: the index of the closest speed allowed []
-        """
-        x = (speed - cls.DEFAULT_TARGET_SPEEDS[0]) / (cls.DEFAULT_TARGET_SPEEDS[-1] - cls.DEFAULT_TARGET_SPEEDS[0])
-        return np.int(np.clip(
-            np.round(x * (cls.DEFAULT_TARGET_SPEEDS.size - 1)), 0, cls.DEFAULT_TARGET_SPEEDS.size - 1))
+    def __init__(self,
+                 road: Road,
+                 position: Vector,
+                 heading: float = 0,
+                 speed: float = 0,
+                 target_speed: float = None):
+        ControlledHuman.__init__(self, road, position, heading, speed, target_speed)
 
-    @classmethod
-    def get_speed_index(cls, vehicle: Human) -> int:
-        return getattr(vehicle, "speed_index", cls.speed_to_index_default(vehicle.speed))
 
-    def predict_trajectory(self, actions: List, action_duration: float, trajectory_timestep: float, dt: float) \
-            -> List[ControlledHuman]:
-        """
-        Predict the future trajectory of the vehicle given a sequence of actions.
-
-        :param actions: a sequence of future actions.
-        :param action_duration: the duration of each action.
-        :param trajectory_timestep: the duration between each save of the vehicle state.
-        :param dt: the timestep of the simulation
-        :return: the sequence of future states
-        """
-        states = []
-        v = copy.deepcopy(self)
-        t = 0
-        for action in actions:
-            v.act(action)  # High-level decision
-            for _ in range(int(action_duration / dt)):
-                t += 1
-                v.act()  # Low-level control action
-                v.step(dt)
-                if (t % int(trajectory_timestep / dt)) == 0:
-                    states.append(copy.deepcopy(v))
-        return states
+class FollowAthlete(ControlledAthlete, FollowHuman):
+    def __init__(self,
+                 road: Road,
+                 position: Vector,
+                 heading: float = 0,
+                 speed: float = 0,
+                 target_speed: float = None):
+        FollowHuman.__init__(self, road, position, heading, speed, target_speed)

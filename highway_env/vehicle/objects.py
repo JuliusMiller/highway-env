@@ -194,4 +194,3 @@ class Landmark(RoadObject):
     def __init__(self, road, position: Sequence[float], heading: float = 0, speed: float = 0):
         super().__init__(road, position, heading, speed)
         self.solid = False
-

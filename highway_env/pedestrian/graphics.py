@@ -4,7 +4,6 @@ from typing import List, Tuple, TYPE_CHECKING
 import numpy as np
 import pygame
 
-from highway_env.pedestrian.controller import MDPHuman
 from highway_env.pedestrian.kinematics import Human
 from highway_env.utils import Vector
 
@@ -137,8 +136,6 @@ class HumanGraphics(object):
             color = cls.YELLOW
         elif isinstance(vehicle, Human):
             color = cls.BLUE
-        elif isinstance(vehicle, MDPHuman):
-            color = cls.EGO_COLOR
         if transparent:
             color = (color[0], color[1], color[2], 30)
         return color
