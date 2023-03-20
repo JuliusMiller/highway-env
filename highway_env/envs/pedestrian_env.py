@@ -20,6 +20,12 @@ from highway_env.vehicle.objects import Obstacle, Landmark
 
 
 class PedestrianEnv(AbstractEnv):
+    """
+    Environment for pedestrian movement.
+
+    A pedestrian is spawned and moving around interacting with vehicles
+    """
+
     @classmethod
     def default_config(cls) -> dict:
         config = super().default_config()
@@ -48,6 +54,7 @@ class PedestrianEnv(AbstractEnv):
         self._create_human()
 
     def _create_road(self) -> None:
+        """Create a road according to the chosen layout."""
         layout = self.config['layout']
         if layout == 'Straight':
             self.road = self.create_straight()
@@ -67,7 +74,6 @@ class PedestrianEnv(AbstractEnv):
         if self.config['vehicles_count'] > 0:
             vehicle = Vehicle(self.road, self.lane.position(0.0, 0), self.lane.heading_at(0.0), speed=random.sample(speeds, 1)[0])   # Vehicle at Position 0
             vehicle = self.action_type.vehicle_class(self.road, vehicle.position, vehicle.heading, vehicle.speed)
-            print(vehicle)
             self.road.vehicles.append(vehicle)
 
         for i in range(self.config["vehicles_count"] - 1):
@@ -83,13 +89,15 @@ class PedestrianEnv(AbstractEnv):
             else:
                 vehicle = other_vehicles_type.create_random(self.road, speed=random.sample(speeds, 1)[0], spacing=1 / self.config["vehicles_density"]) # random.sample(speeds, 1)[0]
             vehicle.randomize_behavior()
-            #print(f"r: {vehicle}")
+
             self.road.vehicles.append(vehicle)
 
     def _create_human(self) -> None:
+        """
+        Create the pedestrian according to the chosen ActionType.
+        """
         self.controlled_vehicles = []
         # human = Human(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
-        # human = MDPHuman(self.road, self.lane.position(50, 5), self.lane.heading_at(0), speed=0)
         x, y = self.config['pedestrian_coordinates']
         speed = self.config['pedestrian_speed']
         heading = self.config['pedestrian_heading']
@@ -128,22 +136,25 @@ class PedestrianEnv(AbstractEnv):
         return self.time >= self.config["duration"]
 
     def create_straight(self):
+        """Create Straight layout"""
         net = RoadNetwork()
         width = 5
-        lane = StraightLane([0, 0], [700, 0], line_types=(LineType.CONTINUOUS, LineType.STRIPED if self.config["lanes_count"] > 1 else LineType.CONTINUOUS), width=width,
+        lenght = 700
+        lane = StraightLane([0, 0], [lenght, 0], line_types=(LineType.CONTINUOUS, LineType.STRIPED if self.config["lanes_count"] > 1 else LineType.CONTINUOUS), width=width,
                             speed_limit=20)
         self.lane = lane
         net.add_lane("a", "b", lane)
         i = 1
         while i < self.config["lanes_count"]:
             net.add_lane("a", "b",
-                         StraightLane([0, i * width], [700, i * width], line_types=(LineType.STRIPED, LineType.STRIPED if i + 1 < self.config["lanes_count"] else LineType.CONTINUOUS), width=width,
+                         StraightLane([0, i * width], [lenght, i * width], line_types=(LineType.STRIPED, LineType.STRIPED if i + 1 < self.config["lanes_count"] else LineType.CONTINUOUS), width=width,
                                       speed_limit=20))
             i += 1
 
         return Road(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
 
     def create_oval(self):
+        """Create Oval layout"""
         net = RoadNetwork()
 
         # Oval
@@ -250,7 +261,7 @@ class PedestrianEnv(AbstractEnv):
 
         return  RegulatedRoad(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
 
-    def create_oncoming(self, length=300):
+    def create_oncoming(self, length=150):
         """
         Make a road composed of a two-way road.
 
@@ -264,7 +275,6 @@ class PedestrianEnv(AbstractEnv):
                                             line_types=(LineType.NONE, LineType.CONTINUOUS_LINE)))'''
         net.add_lane("b", "a", StraightLane([length, StraightLane.DEFAULT_WIDTH], [0, StraightLane.DEFAULT_WIDTH],
                                             line_types=(LineType.CONTINUOUS_LINE, LineType.NONE)))
-        print(net.lanes_list())
 
         return Road(network=net, np_random=self.np_random, record_history=self.config["show_trajectories"])
 
@@ -286,7 +296,16 @@ class PedestrianEnv(AbstractEnv):
 
 
 class PedestrianFixedLandmark(PedestrianEnv):
+    """
+    Environment for fixed pedestrian movement.
+
+    A pedestrian is spawned and walks towards fixed goals.
+    """
+
     def _create_road(self) -> None:
+        """
+        Creates road + sets all goals.
+        """
         super()._create_road()
         self.goal = Landmark(self.road, self.lane.position(20, 10), heading=self.lane.heading)
         self.road.objects.append(self.goal)
@@ -304,6 +323,9 @@ class PedestrianFixedLandmark(PedestrianEnv):
             Landmark(self.road, self.lane.position(self.lane.length / 2, 5), heading=self.lane.heading))'''
 
     def _create_human(self) -> None:
+        """
+        Creates only one FollowHuman capable of walking towards goals.
+        """
         self.controlled_vehicles = []
         x, y = self.config['pedestrian_coordinates']
         speed = self.config['pedestrian_speed']
@@ -319,12 +341,23 @@ class PedestrianFixedLandmark(PedestrianEnv):
 
 
 class PedestrianMovingLandmark(PedestrianEnv):
+    """
+    Environment for variable pedestrian movement.
+
+    A pedestrian is spawned and walks towards moving goals.
+    """
     def _create_road(self) -> None:
+        """
+        Creates road + sets first goal.
+        """
         super()._create_road()
         self.moving_goal = Landmark(self.road, self.lane.position(0, 20), heading=self.lane.heading)
         self.road.objects.append(self.moving_goal)
 
     def _create_human(self) -> None:
+        """
+        Creates only one FollowHuman capable of walking towards goals.
+        """
         self.controlled_vehicles = []
         x, y = self.config['pedestrian_coordinates']
         speed = self.config['pedestrian_speed']
@@ -339,6 +372,7 @@ class PedestrianMovingLandmark(PedestrianEnv):
         self.road.vehicles.append(human)
 
     def move_landmark(self, pos):
+        """Moves the goal to a new position"""
         self.road.objects.remove(self.moving_goal)
         x, y = pos
         self.moving_goal = Landmark(self.road, self.lane.position(x, y), heading=self.lane.heading)

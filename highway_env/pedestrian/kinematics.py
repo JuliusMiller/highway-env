@@ -9,12 +9,18 @@ from highway_env.road.road import Road, LaneIndex
 from highway_env.vehicle.objects import RoadObject, Obstacle, Landmark
 from highway_env.utils import Vector
 
-#TODO: Unterschied zwischen Gehen und Rennen
-
 
 class Human(RoadObject):
+    """
+    A moving human on a road, and its kinematics.
+
+    The human is represented by a dynamical system: a modified unicycle model.
+    It's state is propagated depending on its steering and acceleration actions.
+    """
+
     RADIUS = 0.5
     '''Radius of Human [m]'''
+
     LENGTH = 2 * RADIUS
     WIDTH = 2 * RADIUS
     MAX_SPEED = 3.
@@ -48,7 +54,7 @@ class Human(RoadObject):
         The lane and /or speed are chosen randomly, while longitudinal position is chosen behind the last
         vehicle in the road with density based on the number of lanes.
 
-        :param road: the road where the vehicle is driving
+        :param road: the road where the human is located
         :param speed: initial speed in [m/s]. If None, will be chosen randomly
         :param lane_from: start node of the lane to spawn in
         :param lane_to: end node of the lane to spawn in
@@ -112,6 +118,10 @@ class Human(RoadObject):
 
 
 class Athlete(Human):
+    """
+    An extension for the Human class.
+    """
+
     MAX_SPEED = 10.
     """ Maximum reachable speed [m/s] """
     MIN_SPEED = -7

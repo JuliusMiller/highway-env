@@ -30,7 +30,7 @@ class HumanGraphics(object):
         """
         Display a human on a pygame surface.
 
-        The human is represented as a colored circle.
+        The human is represented as a colored circle with a black dot.
 
         :param human: the human to be drawn
         :param surface: the surface to draw the human on

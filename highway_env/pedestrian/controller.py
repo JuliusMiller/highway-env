@@ -11,13 +11,11 @@ from highway_env.vehicle.objects import Landmark
 
 class ControlledHuman(Human):
     """
-    A Human piloted by two low-level controller.
+    A Human piloted by a low-level controller.
 
     - The longitudinal controller is a speed controller
     - The lateral controller is a heading controller
     """
-
-    """Characteristic time"""
 
     KP_ACC = 1.5
     KP_ANGLE = 1.5
@@ -83,6 +81,10 @@ class ControlledHuman(Human):
 
     def steering_control(self, steering_angle: float) -> float:
         """
+        Control the heading of the vehicle.
+
+        Using a simple proportional controller.
+
         :param steering_angle: new angle
         :return: a steering wheel angle command [rad]
         """
@@ -107,7 +109,7 @@ class ControlledHuman(Human):
 
 class FollowHuman(ControlledHuman):
     """
-    A Human walks towards destination
+    A Human capable of walking towards some goals.
     """
     def __init__(self,
                  road: Road,
@@ -121,7 +123,7 @@ class FollowHuman(ControlledHuman):
     @classmethod
     def create_from(cls, human: "ControlledHuman") -> "FollowHuman":
         """
-        Create a new vehicle from an existing one.
+        Create a new human from an existing one.
 
         The human dynamics and target dynamics are copied, other properties are default.
 
@@ -136,8 +138,10 @@ class FollowHuman(ControlledHuman):
         """
         Perform a high-level action to change the desired lane or speed.
 
-        - If a high-level action is provided, update the target speed and lane;
-        - then, perform longitudinal and lateral control.
+            1. Update Goal if necessary
+            2. Calculate heading
+            3. Calculate speed
+
 
         :param action: a high-level action
         """
@@ -158,6 +162,7 @@ class FollowHuman(ControlledHuman):
 
 class ControlledAthlete(Athlete, ControlledHuman):
 
+    """Extension to ControlledHuman"""
     KP_ACC = 2
     KP_ANGLE = 2
 
@@ -175,6 +180,7 @@ class ControlledAthlete(Athlete, ControlledHuman):
 
 
 class FollowAthlete(ControlledAthlete, FollowHuman):
+    """Extension to FollowHuman"""
     def __init__(self,
                  road: Road,
                  position: Vector,
