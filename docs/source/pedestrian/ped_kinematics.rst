@@ -8,8 +8,8 @@ Kinematics
 The vehicles kinematics are represented in the :py:class:`~highway_env.pedestrian.kinematics.Human` class by the *Unicycle Model* :cite:`unicycle`.
 
 .. math::
-        \dot{x}&=v\cos(\psi+) \\
-        \dot{y}&=v\sin(\psi+) \\
+        \dot{x}&=v\cos(\psi) \\
+        \dot{y}&=v\sin(\psi) \\
         \dot{v}&=u_1 \\
         \dot{\psi}&=u_2 \\
 where
