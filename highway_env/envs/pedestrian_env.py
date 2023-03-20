@@ -2,7 +2,6 @@ import random
 from typing import Dict, Text, Optional
 
 import numpy as np
-from gym.envs.registration import register
 
 from highway_env import utils
 from highway_env.envs import AbstractEnv
