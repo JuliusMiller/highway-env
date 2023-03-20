@@ -1,4 +1,4 @@
-.. _pedestrian_controller:
+.. _pedestrian_ped_controller:
 
 Control
 ========

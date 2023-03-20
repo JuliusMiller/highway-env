@@ -1,4 +1,4 @@
-.. _pedestrian_kinematics:
+.. _pedestrian_ped_kinematics:
 
 .. py:module::highway_env.pedestrian.kinematics
 

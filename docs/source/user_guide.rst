@@ -11,5 +11,6 @@ User Guide
   dynamics/index
   rewards/index
   graphics/index
+  pedestrian/index
   multi_agent
   make_your_own
