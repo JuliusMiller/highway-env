@@ -54,7 +54,7 @@ class ControlledHuman(Human):
         """
         Perform a high-level action to change the desired lane or speed.
 
-        - If a high-level action is provided, update the target speed and lane;
+        - If a high-level action is provided, update the target speed and heading;
         - then, perform longitudinal and lateral control.
 
         :param action: a high-level action
@@ -77,6 +77,10 @@ class ControlledHuman(Human):
         super().act(action)
 
     def safe_angle(self, angle):
+        """
+        :param angle: angle
+        :return: angle in correct quadrant
+        """
         return np.arctan2(np.sin(angle), np.cos(angle))
 
     def steering_control(self, steering_angle: float) -> float:
@@ -143,7 +147,7 @@ class FollowHuman(ControlledHuman):
             3. Calculate speed
 
 
-        :param action: a high-level action
+        :param action: a high-level action, gets ignored
         """
         for g in self.goals:
             if np.abs(g.position[0] - self.position[0]) < 1 and np.abs(g.position[1] - self.position[1]) < 1:
